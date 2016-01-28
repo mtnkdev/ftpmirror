@@ -426,7 +426,7 @@ sub stat_file($$) {
 sub mirr_upload($$;$$);	# declare prototype for recursion.
 sub mirr_upload($$;$$) {
     my ($ftp, $opts, $path, $pfx) = @_;
-    my ($rfile, $r, @files, %fhash);
+    my ($rfile, $rfhash, $r, @files);
     $path = "." if not defined $path;
     $pfx = "" if not defined $pfx;
     # List remote directory:
