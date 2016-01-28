@@ -444,10 +444,33 @@ sub mirr_upload($$;$$) {
 	    # TODO: upload file if differs
 	    print STDOUT "${pfx}put   ".descf($f)."\n";
 	} elsif ($f->{type} eq "d") {
-	    # TODO: create remote directory if necessary,
-	    # set its permissions, change into it remotely
-	    # and locally and call mirr_upload() recursively
-	    print STDOUT "${pfx}cd    ".descf($f)."\n";
+	    if (not exists $rfname2f->{$f->{f}}) {
+		$ftp->mkdir($f->{f}) and $ftp->ok()
+		    or ftpd $ftp, "ftp mkdir '$f->{path}'";
+		print STDOUT "${pfx}mkdir ".descf($f)."\n";
+	    };
+	    if (not $opts->{n} and (not exists $rfname2f->{$f->{f}}
+	    or $rfname2f->{$f->{f}}->{perms} != $f->{perms})) {
+		# set permissions on a directory:
+		$ftp->site("chmod", $f->{permsXXXX}, $f->{f})
+		and $ftp->ok()
+		    or ftpd $ftp, "ftp chmod $f->{permsXXXX}"
+			." '$f->{path}'";
+		print STDOUT "${pfx}chmod ".descf($f)."\n";
+	    };
+	    # change into directory $f:
+	    $ftp->cwd($f->{f}) and $ftp->ok()
+		or ftpd $ftp, "ftp cd '$f->{path}'";
+	    chdir $f->{f}
+		or die "cd '$f->{path}' - $!";
+	    print STDOUT "${pfx}cd    ".descf($f)."\n"
+		if $opts->{v};
+	    my $path2 = ($path eq ".") ? $f->{f} : "$path/$f->{f}";
+	    mirr_upload($ftp, $opts, $path2, " ".$pfx);
+	    # Return to local parent from local directory '$f':
+	    chdir ".." or die "cd '$path2/..' - $!";
+	    # Return to remote parent from remote directory '$f':
+	    $ftp->cdup() and $ftp->ok() or ftpd $ftp, "ftp cdup";
 	} else {
 	    # skip device files, sockets, FIFOs and symlinks:
 	    print STDOUT "${pfx}skip  ".descf($f)."\n";
