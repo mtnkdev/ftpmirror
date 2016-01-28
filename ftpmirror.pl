@@ -23,6 +23,7 @@ sub usage() {
 	."\t-d     FTP debug output\n"
 	."\t-f FP  verify FTP server against fingerprint FP\n"
 	."\t-n     don't preserve permissions\n"
+	."\t-u     upload to FTP server insead of downloading\n"
 	."\t-v     verbose mode\n";
 };
 
@@ -434,16 +435,17 @@ sub mirr_upload($$;$$) {
     };
 };
 
-usage if not getopts "cdf:nv", \%opts;
+usage if not getopts "cdf:nuv", \%opts;
 usage if scalar(@ARGV) < 1;
-$ARGV[0] =~ m{^(?:(ftp[s0]?)://)?(?:([^@]+)@)?([^/]+)(?:/(.*))?$}i
+$ARGV[0] =~ m{^(?:(ftp[s0]?)://)?(?:([^@]+)@)?([^/]+)(?:/+(.*))?$}i
     or die "ERROR: invalid FTP URL - $ARGV[0]\n";
 
 my $ftpproto = defined $1 ? lc($1) : "ftp";
 my $ftpuser = defined $2 ? $2 : "anonymous";
 my $ftphost = $3;
-my $remotedir = defined $4 ? $4 : ".";
-my $localdir = defined $ARGV[1] ? $ARGV[1] : $ftphost;
+my $remotedir = defined $4 && $4 ne "" ? $4 : ".";
+my $localdir = defined $ARGV[1] && $ARGV[1] ne "" ? $ARGV[1] :
+    $remotedir ne "." ? "$ftphost/$remotedir" : $ftphost;
 
 my $ftp = Net::FTP->new($ftphost, Timeout=>15, Passive=>1,
 	Debug=>$opts{d},
@@ -481,21 +483,25 @@ eval {
     #$ftp->prot("P") or ftpw $ftp, "cannot switch data channel to"
     #	." Private";
     if ($localdir ne ".") {
-	make_path $localdir or die "mkdir '$localdir' - $!"
-	    if not -d $localdir;
+	if (not $opts{u} and not -d $localdir) {
+	    make_path $localdir or die "mkdir '$localdir' - $!";
+	};
 	chdir $localdir or die "cd '$localdir' - $!";
     };
     if ($remotedir ne ".") {
 	if ($remotedir =~ m{^/}) {
 	    die "invalid remote dir '$remotedir'";
 	};
+	# TODO: don't fail in upload mode when
+	# remote directory doesn't exist
 	$ftp->cwd($remotedir) and $ftp->ok()
 	    or ftpd $ftp, "ftp cd '$remotedir'";
-	make_path $remotedir or die "mkdir '$remotedir' - $!"
-	    if not -d $remotedir;
-	chdir $remotedir or die "cd '$remotedir' - $!";
     };
-    mirr($ftp, \%opts, $remotedir);
+    if ($opts{u}) {
+	mirr_upload($ftp, \%opts, $remotedir);
+    } else {
+	mirr($ftp, \%opts, $remotedir);
+    };
 QUIT_FTP:
 };
 my $err = defined $@ ? $@ : "";
