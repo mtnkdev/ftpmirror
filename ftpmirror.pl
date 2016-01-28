@@ -483,7 +483,7 @@ eval {
     #$ftp->prot("P") or ftpw $ftp, "cannot switch data channel to"
     #	." Private";
     if ($localdir ne ".") {
-	if (not $opts{u} and not -d $localdir) {
+	if (not $opts{u} and not -e $localdir) {
 	    make_path $localdir or die "mkdir '$localdir' - $!";
 	};
 	chdir $localdir or die "cd '$localdir' - $!";
