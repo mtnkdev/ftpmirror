@@ -300,12 +300,13 @@ sub check_file_type_and_mtime($$) {
 # after download is finished.
 sub get($$$$) {
     my ($f, $ftp, $pfx, $opts) = @_;
-    # "download started":
-    print STDOUT "${pfx}get   ".descf($f).": ";
+
+    print STDOUT "${pfx}get   ".descf($f).": ";	# download started
     STDOUT->flush();
 
     $ftp->hash(\*STDOUT, 0x80000);	# print '#' every 512kbytes
     $ftp->get($f->{f}) or ftpd $ftp, "ftp get '$f->{f}'";
+
     # set mtime:
     utime $f->{tm}, $f->{tm}, $f->{f}
 	or die "set mtime of '$f->{f}' - $!";
@@ -314,6 +315,7 @@ sub get($$$$) {
 	chmod $f->{perms}, $f->{f}
 	    or die "chmod $f->{permsXXXX} $f->{f} - $!";
     };
+
     print STDOUT "OK\n";		# download finished.
     STDOUT->flush();
 };
