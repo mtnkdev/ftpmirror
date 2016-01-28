@@ -412,7 +412,7 @@ sub stat_file($$) {
 	$f->{type} = "p";	# FIFO == pipe
     } elsif (S_ISSOCK($st[2])) {
 	$f->{type} = "s";
-    } else (S_IFWHT($st[2])) {
+    } else {
 	$f->{type} = "?";	# unknown type
     };
     $f->{usr} = $st[4];
