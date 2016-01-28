@@ -180,8 +180,9 @@ sub dir($$;$$$) {
 # lrwxrwxrwx  1 root root           4 Jan 23 14:22 rtc -> rtc0
 # prw-r-----  1 root adm            0 Jan 23 14:22 xconsole
 # -rw-r--r-- 1 root root    98964 Jun 25  2015 memtest86.bin
-	foreach (@lines) {
-	    m/ ^(?<tp>
+	foreach my $ln (@lines) {
+	    $ln =~ m/^
+		(?<tp>
 		(?<t>[bcdlps-])		# file type
 		(?<p>
 		(?<urwx>
@@ -227,9 +228,9 @@ sub dir($$;$$$) {
 		)
 		\s+
 		(?<f>.*)		# file name
-	    $/x or die "invalid LIST line: $_";
+	    $/x or die "invalid LIST line: $ln";
 	    my $f;
-	    $f->{ln} = $_;
+	    $f->{ln} = $ln;
 	    $f->{$_} = $+{$_} foreach keys %+;
 	    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
 	    set_perms($f);
@@ -243,7 +244,13 @@ sub dir($$;$$$) {
     } else {
 	my @lines = $ftp->ls($d);
 	if (not $ftp->ok()) {ftpd $ftp, "ls '$p'"};
-	push @files, {f=>$_,} foreach @lines;
+	foreach my $ln (@lines) {
+	    my $f;
+	    $f->{ln} = $ln;
+	    $f->{f} = $ln;
+	    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
+	    push @files, $f;
+	}
 	return @files;
     }
 };
