@@ -63,83 +63,83 @@ sub set_perms($) {
     $f->{perms} = 0 if not defined $f->{perms};
     if (defined $f->{ur}) {
 	if ($f->{ur} eq "r") {
-	    $f->{perms} |=  00400;
+	    $f->{perms} |=  S_IRUSR;
 	} else {
-	    $f->{perms} &= ~00400;
+	    $f->{perms} &= ~S_IRUSR;
 	};
     };
     if (defined $f->{uw}) {
 	if ($f->{uw} eq "w") {
-	    $f->{perms} |=  00200;
+	    $f->{perms} |=  S_IWUSR;
 	} else {
-	    $f->{perms} &= ~00200;
+	    $f->{perms} &= ~S_IWUSR;
 	};
     };
     if (defined $f->{ux}) {
 	if ($f->{ux} eq "x") {
-	    $f->{perms} |=  00100;
-	    $f->{perms} &= ~04000;
+	    $f->{perms} |=  S_IXUSR;
+	    $f->{perms} &= ~S_ISUID;
 	} elsif ($f->{ux} eq "s") {
-	    $f->{perms} |=  04100;
+	    $f->{perms} |=  S_IXUSR|S_ISUID;
 	} elsif ($f->{ux} eq "S") {
-	    $f->{perms} |=  04000;
-	    $f->{perms} &= ~00100;
+	    $f->{perms} &= ~S_IXUSR;
+	    $f->{perms} |=  S_ISUID;
 	} else {
-	    $f->{perms} &= ~04100;
+	    $f->{perms} &= ~(S_IXUSR|S_ISUID);
 	};
     };
     if (defined $f->{gr}) {
 	if ($f->{gr} eq "r") {
-	    $f->{perms} |=  00040;
+	    $f->{perms} |=  S_IRGRP;
 	} else {
-	    $f->{perms} &= ~00040;
+	    $f->{perms} &= ~S_IRGRP;
 	};
     };
     if (defined $f->{gw}) {
 	if ($f->{gw} eq "w") {
-	    $f->{perms} |=  00020;
+	    $f->{perms} |=  S_IWGRP;
 	} else {
-	    $f->{perms} &= ~00020;
+	    $f->{perms} &= ~S_IWGRP;
 	};
     };
     if (defined $f->{gx}) {
 	if ($f->{gx} eq "x") {
-	    $f->{perms} |=  00010;
-	    $f->{perms} &= ~02000;
+	    $f->{perms} |=  S_IXGRP;
+	    $f->{perms} &= ~S_ISGID;
 	} elsif ($f->{gx} eq "s") {
-	    $f->{perms} |=  02010;
+	    $f->{perms} |=  S_IXGRP|S_ISGID;
 	} elsif ($f->{gx} eq "S") {
-	    $f->{perms} |=  02000;
-	    $f->{perms} &= ~00010;
+	    $f->{perms} &= ~S_IXGRP;
+	    $f->{perms} |=  S_ISGID;
 	} else {
-	    $f->{perms} &= ~02010;
+	    $f->{perms} &= ~(S_IXGRP|S_ISGID);
 	};
     };
     if (defined $f->{or}) {
 	if ($f->{or} eq "r") {
-	    $f->{perms} |=  00004;
+	    $f->{perms} |=  S_IROTH;
 	} else {
-	    $f->{perms} &= ~00004;
+	    $f->{perms} &= ~S_IROTH;
 	};
     };
     if (defined $f->{ow}) {
 	if ($f->{ow} eq "w") {
-	    $f->{perms} |=  00002;
+	    $f->{perms} |=  S_IWOTH;
 	} else {
-	    $f->{perms} &= ~00002;
+	    $f->{perms} &= ~S_IWOTH;
 	};
     };
     if (defined $f->{ox}) {
 	if ($f->{ox} eq "x") {
-	    $f->{perms} |=  00001;
-	    $f->{perms} &= ~01000;
+	    $f->{perms} |=  S_IXOTH;
+	    $f->{perms} &= ~S_ISVTX;
 	} elsif ($f->{ox} eq "t") {
-	    $f->{perms} |=  01001;
+	    $f->{perms} |=  S_IXOTH|S_ISVTX;
 	} elsif ($f->{ox} eq "T") {
-	    $f->{perms} |=  01000;
-	    $f->{perms} &= ~00001;
+	    $f->{perms} &= ~S_IXOTH;
+	    $f->{perms} |=  S_ISVTX;
 	} else {
-	    $f->{perms} &= ~01001;
+	    $f->{perms} &= ~(S_IXOTH|S_ISVTX);
 	};
     };
     set_permsXXXX($f);
