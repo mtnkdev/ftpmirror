@@ -42,6 +42,17 @@ sub ftpd($$) {
     die "$text - $m\n";
 };
 
+# Write leading-zero-formatted octal version of "perms"
+# into "permsXXXX",
+sub set_permsXXXX($) {
+    my ($f) = @_;
+    if ($f->{perms} <= 0777) {
+        $f->{permsXXXX} = sprintf "%04o", $f->{perms};
+    } else {
+        $f->{permsXXXX} = sprintf "0%o", $f->{perms};
+    };
+};
+
 # Set numeric "perms" field from "ur/uw/ux/gr/gw/gw/or/ow/ox".
 # Also write leading-zero-formatted octal value of "perms"
 # into "permsXXXX",
@@ -129,11 +140,7 @@ sub set_perms($) {
 	    $f->{perms} &= ~01001;
 	};
     };
-    if ($f->{perms} <= 0777) {
-        $f->{permsXXXX} = sprintf "%04o", $f->{perms};
-    } else {
-        $f->{permsXXXX} = sprintf "0%o", $f->{perms};
-    };
+    set_permsXXXX($f);
 };
 
 # Convert UNIX seconds since 1970 into "hh:mm" or "year" string
@@ -378,6 +385,51 @@ sub mirr($$;$$) {
 	} else {
 	    # Skip file of unknown type:
 	    print STDOUT "${pfx}skip ".descf($f)."\n";
+	};
+    };
+};
+
+# Fill in local file info (size, mtime, perms etc).
+sub stat_file($$) {
+    my ($f, $p) = @_;
+    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
+    my @st = stat $f->{f};
+    $f->{perms} = $st[2] & 07777;
+    set_permsXXXX($f);
+    # TODO: sz, tm, usr, gid and type fields
+    $f->{type} = "?";
+};
+
+# Recursively mirror current local directory to
+# current remote local one.
+sub mirr_upload($$;$$);	# declare prototype for recursion.
+sub mirr_upload($$;$$) {
+    my ($ftp, $opts, $path, $pfx) = @_;
+    my ($rfile, $rfname2f, $r, @files);
+    $path = "." if not defined $path;
+    $pfx = "" if not defined $pfx;
+    # List remote directory:
+    ($rfile, $rfname2f) = dir($ftp, $opts, ".", $path, $pfx);
+    # List local directory:
+    opendir(my $dh, ".") or die "opendir '.' - $!";
+    @files = readdir $dh;
+    closedir $dh;
+    # Decide what to do for each local file:
+    foreach my $fn (@files) {
+	my $f; $f->{f} = $fn;
+	next if $f->{f} eq "." or $f->{f} eq "..";	# skip
+	stat_file($f, $path);
+	if ($f->{type} eq "f") {
+	    # TODO: upload file if differs
+	    print STDOUT "${pfx}put   ".descf($f)."\n";
+	} elsif ($f->{type} eq "d") {
+	    # TODO: create remote directory if necessary,
+	    # set its permissions, change into it remotely
+	    # and locally and call mirr_upload() recursively
+	    print STDOUT "${pfx}cd    ".descf($f)."\n";
+	} else {
+	    # skip device files, sockets, FIFOs and symlinks:
+	    print STDOUT "${pfx}skip  ".descf($f)."\n";
 	};
     };
 };
