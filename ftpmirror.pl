@@ -421,6 +421,26 @@ sub stat_file($$) {
     $f->{tm}  = $st[9];
 };
 
+# Put file $f to FTP server $ftp. Set permissions afterwards.
+sub put($$$$) {
+    my ($f, $ftp, $pfx, $opts) = @_;
+
+    print STDOUT "${pfx}put   ".descf($f).": ";	# upload started,
+    STDOUT->flush();
+
+    $ftp->hash(\*STDOUT, 0x80000);	# print '#' every 512kbytes
+    $ftp->put($f->{f}) or ftpd $ftp, "ftp put '$f->{path}'";
+
+    if (not $opts->{n}) {
+	# set permissions:
+	$ftp->site("chmod", $f->{permsXXXX}, $f->{f}) and $ftp->ok()
+	    or ftpd $ftp, "ftp chmod $f->{permsXXXX} $f->{path}";
+    };
+
+    print STDOUT "OK\n";		# upload finished.
+    STDOUT->flush();
+};
+
 # Recursively mirror current local directory to
 # current remote local one.
 sub mirr_upload($$;$$);	# declare prototype for recursion.
@@ -441,8 +461,38 @@ sub mirr_upload($$;$$) {
 	next if $f->{f} eq "." or $f->{f} eq "..";	# skip
 	stat_file($f, $path);
 	if ($f->{type} eq "f") {
-	    # TODO: upload file if differs
-	    print STDOUT "${pfx}put   ".descf($f)."\n";
+	    if (exists $rfhash->{$f->{f}}) {
+		check_file_type_and_mtime($rfhash->{$f->{f}}, $ftp);
+		if ($rfhash->{$f->{f}}->{type} eq "d"
+		or $rfhash->{$f->{f}}->{type} eq "f?") {
+		    # rmdir if it's a directory:
+		    $ftp->rmdir($f->{f}, 1) and $ftp->ok()
+			or ftpd $ftp, "ftp rmdir '$f->{path}'";
+		    print STDOUT "${pfx}rmdir "
+			.descf($rfhash->{$f->{f}})."\n";
+		    delete $rfhash->{$f->{f}};
+		} elsif ($rfhash->{$f->{f}}->{type} ne "f"
+		and $rfhash->{$f->{f}}->{type} ne "f?") {
+		    # remove if it's not a file:
+		    $ftp->delete($f->{f}) and $ftp->ok()
+			or ftpd $ftp, "ftp rm '$f->{path}'";
+		    print STDOUT "${pfx}rm    "
+			.descf($rfhash->{$f->{f}})."\n";
+		    delete $rfhash->{$f->{f}};
+		} else {
+		    $rfhash->{$f->{f}}->{sz} = $ftp->size($f->{f});
+		    if (not defined $rfhash->{$f->{f}}->{sz}) {
+			ftpd $ftp, "ftp size of '$f->{path}'"
+		    };
+		};
+	    };
+	    if (not exists $rfhash->{$f->{f}}
+	    or $rfhash->{$f->{f}}->{sz} != $f->{sz}
+	    or $rfhash->{$f->{f}}->{tm} != $f->{tm}) {
+		put($f, $ftp, $pfx, $opts);
+	    } else {
+		print STDOUT "${pfx}skip  ".descf($f)."\n";
+	    };
 	} elsif ($f->{type} eq "d") {
 	    if (exists $rfhash->{$f->{f}}) {
 		check_file_type_and_mtime($rfhash->{$f->{f}}, $ftp);
