@@ -1,0 +1,31 @@
+ftpmirror - mirror a remote FTP directory
+
+ftpmirror is a Perl5 script for mirroring remote
+FTP directories to a local ones, or to upload
+local ones to FTP server.
+
+ftpmirror supports FTP/SSL and FTP/TLS modes when
+perl's Net::FTP library is of version
+3.05 or newer. It can verify server's certificate
+against a specified fingerprint. To make it
+easier for a user, ftpmirror supports retrieving
+server certificate and printing its Authority,
+Owner, CN and md5/sha1/sha256/sha512 fingerprints,
+when run as "./ftpmirror.pl -c host.name". The
+reported fingerprints can be passed to -f option,
+including the md5$/sha1$/sha256$/sha512$ prefix.
+Fingerprint verification is useful when working
+with servers that use self-signed certificates or
+incorrect DNS names.
+
+When mirroring ftp://host.name/sub/dir/ the
+script creates ./host.name/sub/dir in current
+directory. It preserves permissions on downloaded
+files and directories and mtime timestamps on
+downloaded files. 
+
+For uploaded files and directories, only
+permissions are preserved, because there's no
+support for this in FTP protocol.
+
+NOTE: uploading is not yet implemented.
