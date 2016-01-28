@@ -316,7 +316,7 @@ sub get($$$$) {
 	    or die "chmod $f->{permsXXXX} $f->{f} - $!";
     };
 
-    print STDOUT "OK\n";		# download finished.
+#   print STDOUT "OK\n";		# download finished.
     STDOUT->flush();
 };
 
@@ -439,7 +439,7 @@ sub put($$$$) {
 	    or ftpd $ftp, "ftp chmod $f->{permsXXXX} $f->{path}";
     };
 
-    print STDOUT "OK\n";		# upload finished.
+#   print STDOUT "OK\n";		# upload finished.
     STDOUT->flush();
 };
 
