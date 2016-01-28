@@ -11,7 +11,8 @@ use Net::FTP;
 use Getopt::Std;
 use IO::Socket::SSL;
 use File::Path qw(make_path remove_tree);
-use IO::Handle;
+use IO::Handle;		# ->flush();
+use Fcntl ':mode';	# S_IFDIR, S_IFREG etc
 
 my %opts;
 
@@ -394,11 +395,30 @@ sub mirr($$;$$) {
 sub stat_file($$) {
     my ($f, $p) = @_;
     $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
-    my @st = stat $f->{f};
+    my @st = lstat $f->{f};
     $f->{perms} = $st[2] & 07777;
     set_permsXXXX($f);
-    # TODO: sz, tm, usr, gid and type fields
-    $f->{type} = "?";
+    if (S_ISDIR($st[2])) {
+	$f->{type} = "d";
+    } elsif (S_ISREG($st[2])) {
+	$f->{type} = "f";
+    } elsif (S_ISLNK($st[2])) {
+	$f->{type} = "l";
+    } elsif (S_ISBLK($st[2])) {
+	$f->{type} = "b";
+    } elsif (S_ISCHR($st[2])) {
+	$f->{type} = "c";
+    } elsif (S_ISFIFO($st[2])) {
+	$f->{type} = "p";	# FIFO == pipe
+    } elsif (S_ISSOCK($st[2])) {
+	$f->{type} = "s";
+    } else (S_IFWHT($st[2])) {
+	$f->{type} = "?";	# unknown type
+    };
+    $f->{usr} = $st[4];
+    $f->{grp} = $st[5];
+    $f->{sz}  = $st[7];
+    $f->{tm}  = $st[9];
 };
 
 # Recursively mirror current local directory to
