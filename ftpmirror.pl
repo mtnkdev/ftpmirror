@@ -450,7 +450,9 @@ sub mirr_upload($$;$$) {
 		print STDOUT "${pfx}mkdir ".descf($f)."\n";
 	    };
 	    if (not $opts->{n} and (not exists $rfhash->{$f->{f}}
-	    or $rfhash->{$f->{f}}->{perms} != $f->{perms})) {
+	    or defined $rfhash->{$f->{f}}->{type} and
+	    $rfhash->{$f->{f}}->{type} eq "d" and
+	    $rfhash->{$f->{f}}->{perms} != $f->{perms})) {
 		# set permissions on a directory:
 		$ftp->site("chmod", $f->{permsXXXX}, $f->{f})
 		and $ftp->ok()
