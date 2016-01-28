@@ -444,21 +444,39 @@ sub mirr_upload($$;$$) {
 	    # TODO: upload file if differs
 	    print STDOUT "${pfx}put   ".descf($f)."\n";
 	} elsif ($f->{type} eq "d") {
+	    if (exists $rfhash->{$f->{f}}) {
+		check_file_type_and_mtime($rfhash->{$f->{f}}, $ftp);
+		if ($rfhash->{$f->{f}}->{type} ne "d"
+		and $rfhash->{$f->{f}}->{type} ne "d?") {
+		    # remove if it's not a directory:
+		    $ftp->delete($f->{f}) and $ftp->ok()
+			or ftpd $ftp, "ftp rm '$f->{path}'";
+		    print STDOUT "${pfx}rm    "
+			.descf($rfhash->{$f->{f}})."\n";
+		    delete $rfhash->{$f->{f}};
+		};
+	    };
+	    # create if it doesn't exist:
 	    if (not exists $rfhash->{$f->{f}}) {
 		$ftp->mkdir($f->{f}) and $ftp->ok()
 		    or ftpd $ftp, "ftp mkdir '$f->{path}'";
-		print STDOUT "${pfx}mkdir ".descf($f)."\n";
+		# XXX: report mkdir after both mkdir and chmod:
 	    };
-	    if (not $opts->{n} and (not exists $rfhash->{$f->{f}}
-	    or defined $rfhash->{$f->{f}}->{type} and
-	    $rfhash->{$f->{f}}->{type} eq "d" and
+	    if (not $opts->{n} and (not exists $rfhash->{$f->{f}} or
 	    $rfhash->{$f->{f}}->{perms} != $f->{perms})) {
 		# set permissions on a directory:
 		$ftp->site("chmod", $f->{permsXXXX}, $f->{f})
 		and $ftp->ok()
 		    or ftpd $ftp, "ftp chmod $f->{permsXXXX}"
 			." '$f->{path}'";
-		print STDOUT "${pfx}chmod ".descf($f)."\n";
+		# report chmod on existing directories only:
+		if (exists $rfhash->{$f->{f}}) {
+		    print STDOUT "${pfx}chmod ".descf($f)."\n";
+		};
+	    };
+	    if (not exists $rfhash->{$f->{f}}) {
+		# XXX: delayed mkdir report:
+		print STDOUT "${pfx}mkdir ".descf($f)."\n";
 	    };
 	    # change into directory $f:
 	    $ftp->cwd($f->{f}) and $ftp->ok()
