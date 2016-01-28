@@ -175,7 +175,7 @@ sub descf($) {
 # file permissions.
 sub dir($$;$$$) {
     my ($ftp, $opts, $d, $p, $pfx) = @_;
-    my ($files, $name2f);
+    my ($files, $fhash);
     $d = "." if not defined $d;
     $p = $d if not defined $p;
     $pfx = "" if not defined $pfx;
@@ -244,7 +244,7 @@ sub dir($$;$$$) {
 	    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
 	    set_perms($f);
 	    push @$files, $f;
-	    $name2f->{$f->{f}} = $f;
+	    $fhash->{$f->{f}} = $f;
 	    # print STDOUT "$f->{t}$f->{urwx}$f->{grwx}$f->{orwx}".
 	    #	"$f->{a} ".sprintf("%04o", $f->{perms})
 	    #	." $f->{usr} $f->{grp} $f->{mjns}"
@@ -259,10 +259,10 @@ sub dir($$;$$$) {
 	    $f->{f} = $ln;
 	    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
 	    push @$files, $f;
-	    $name2f->{$f->{f}} = $f;
+	    $fhash->{$f->{f}} = $f;
 	}
     };
-    return ($files, $name2f);
+    return ($files, $fhash);
 };
 
 # If file description was produced by LIST, check file type
@@ -323,11 +323,11 @@ sub get($$$$) {
 sub mirr($$;$$);	# declare prototype for recursion.
 sub mirr($$;$$) {
     my ($ftp, $opts, $path, $pfx) = @_;
-    my ($files, $name2f, $r);
+    my ($files, $fhash, $r);
     $path = "." if not defined $path;
     $pfx = "" if not defined $pfx;
     # List remote directory:
-    ($files, $name2f) = dir($ftp, $opts, ".", $path, $pfx);
+    ($files, $fhash) = dir($ftp, $opts, ".", $path, $pfx);
     foreach my $f (@$files) {
 	next if $f->{f} eq "." or $f->{f} eq "..";
 	check_file_type_and_mtime($f, $ftp);
@@ -426,11 +426,11 @@ sub stat_file($$) {
 sub mirr_upload($$;$$);	# declare prototype for recursion.
 sub mirr_upload($$;$$) {
     my ($ftp, $opts, $path, $pfx) = @_;
-    my ($rfile, $rfname2f, $r, @files);
+    my ($rfile, $r, @files, %fhash);
     $path = "." if not defined $path;
     $pfx = "" if not defined $pfx;
     # List remote directory:
-    ($rfile, $rfname2f) = dir($ftp, $opts, ".", $path, $pfx);
+    ($rfile, $rfhash) = dir($ftp, $opts, ".", $path, $pfx);
     # List local directory:
     opendir(my $dh, ".") or die "opendir '.' - $!";
     @files = readdir $dh;
@@ -444,13 +444,13 @@ sub mirr_upload($$;$$) {
 	    # TODO: upload file if differs
 	    print STDOUT "${pfx}put   ".descf($f)."\n";
 	} elsif ($f->{type} eq "d") {
-	    if (not exists $rfname2f->{$f->{f}}) {
+	    if (not exists $rfhash->{$f->{f}}) {
 		$ftp->mkdir($f->{f}) and $ftp->ok()
 		    or ftpd $ftp, "ftp mkdir '$f->{path}'";
 		print STDOUT "${pfx}mkdir ".descf($f)."\n";
 	    };
-	    if (not $opts->{n} and (not exists $rfname2f->{$f->{f}}
-	    or $rfname2f->{$f->{f}}->{perms} != $f->{perms})) {
+	    if (not $opts->{n} and (not exists $rfhash->{$f->{f}}
+	    or $rfhash->{$f->{f}}->{perms} != $f->{perms})) {
 		# set permissions on a directory:
 		$ftp->site("chmod", $f->{permsXXXX}, $f->{f})
 		and $ftp->ok()
