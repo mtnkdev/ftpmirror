@@ -10,7 +10,7 @@ use warnings;
 use Net::FTP;
 use Getopt::Std;
 use IO::Socket::SSL;
-use File::Path qw(make_path remove_tree);
+use File::Path;		# make_path() and remove_tree()
 use IO::Handle;		# ->flush();
 use Fcntl ':mode';	# S_IFDIR, S_IFREG etc
 
@@ -320,6 +320,24 @@ sub get($$$$) {
     STDOUT->flush();
 };
 
+# Wrapper around File::Path::make_path()
+sub mkdir_p($) {
+    my ($f) = @_;
+    eval {
+	File::Path::make_path($f);
+    };
+    return (defined $@ and $@ ne "") ? 0 : 1;
+};
+
+# Wrapper around File::Path::remove_tree()
+sub rmdir_r($) {
+    my ($f) = @_;
+    eval {
+	File::Path::remove_tree($f);
+    };
+    return (defined $@ and $@ ne "") ? 0 : 1;
+};
+
 # Recursively mirror current remote directory to
 # current local one.
 sub mirr($$;$$);	# declare prototype for recursion.
@@ -334,29 +352,34 @@ sub mirr($$;$$) {
 	next if $f->{f} eq "." or $f->{f} eq "..";
 	check_file_type_and_mtime($f, $ftp);
 	if ($f->{type} eq "f" or $f->{type} eq "f?") {
-	    if (-f $f->{f}) {
-		my @st = stat $f->{f};
-		die "stat '$f->{f}' - $!" if not scalar(@st);
-		$f->{sz} = $ftp->size($f->{f});
-		if (not defined $f->{sz}) {
-		    ftpd $ftp, "ftp size of '$f->{f}'"
-		};
-		if ($f->{sz} == $st[7] and $f->{tm} == $st[9]) {
-		    if (defined $f->{perms}
-		    and $f->{perms} != ($st[2] & 07777)) {
-			print STDOUT "${pfx}chmod ".descf($f)."\n";
-			chmod $f->{perms}, $f->{f}
-			    or die "chmod $f->{permsXXXX}"
-				." $f->{f} - $!";
-		    } else {
-			print STDOUT "${pfx}skip ".descf($f)."\n"
-			    if $opts->{v};
-		    };
+	    my @st;
+	    if (-e $f->{f}) {
+		if (-d $f->{f}) {
+		    # rmdir if it's a directory:
+		    rmdir_r $f->{f}
+			or die "rmdir '$f->{path}' - $!";
+		} elsif (not -f $f->{f}) {
+		    # remove if it's not a file:
+		    unlink $f->{f}
+			or die "rm '$f->{path}' - $!";
 		} else {
-		    get($f, $ftp, $pfx, $opts);
+		    (@st = stat $f->{f})
+			or die "stat '$f->{path}' - $!";
+		    defined($f->{sz} = $ftp->size($f->{f}))
+		    and $ftp->ok()
+			or ftpd $ftp, "ftp size of '$f->{path}'";
 		};
-	    } else {
+	    };
+	    if (not @st or $f->{sz} != $st[7] or $f->{tm} != $st[9]) {
 		get($f, $ftp, $pfx, $opts);
+	    } elsif (not $opts->{n}
+	    and $f->{perms} != ($st[2] & 07777)) {
+		chmod $f->{perms}, $f->{f}
+		    or die "chmod $f->{permsXXXX} '$f->{path}' - $!";
+		print STDOUT "${pfx}chmod ".descf($f)."\n";
+	    } else {
+		print STDOUT "${pfx}skip  ".descf($f)."\n"
+		    if $opts->{v};
 	    };
 	} elsif ($f->{type} eq "d" or $f->{type} eq "d?") {
 	    # Do chdir on remote server to confirm that it's indeed
@@ -364,7 +387,14 @@ sub mirr($$;$$) {
 	    # chdir to it and call mirr() recursively:
 	    $ftp->cwd($f->{f}) and $ftp->ok()
 		or ftpd $ftp, "ftp cd '$f->{f}'";
-	    make_path $f->{f}
+	    if (-e $f->{f} and not -d $f->{f}) {
+		my $lf = {f=>$f->{f}};
+		stat_file($lf, $path);
+		unlink $f->{f}
+		    or die "rm '$f->{f}' - $!";
+		print STDOUT "${pfx}rm    ".descf($lf)."\n";
+	    }
+	    mkdir_p $f->{f}
 		or die "mkdir '$f->{f}' - $!"
 		    if not -d $f->{f};
 	    # set permissions on a directory:
@@ -378,7 +408,7 @@ sub mirr($$;$$) {
 	    };
 	    chdir $f->{f}
 		or die "cd '$f->{f}' - $!";
-	    print STDOUT "${pfx}cd ".descf($f)."\n"
+	    print STDOUT "${pfx}cd    ".descf($f)."\n"
 		if $opts->{v};
 	    my $path2 = ($path eq ".") ? $f->{f} : "$path/$f->{f}";
 	    mirr($ftp, $opts, $path2, " ".$pfx);
@@ -599,7 +629,7 @@ eval {
     #	." Private";
     if ($localdir ne ".") {
 	if (not $opts{u} and not -e $localdir) {
-	    make_path $localdir or die "mkdir '$localdir' - $!";
+	    mkdir_p $localdir or die "mkdir '$localdir' - $!";
 	};
 	chdir $localdir or die "cd '$localdir' - $!";
     };
