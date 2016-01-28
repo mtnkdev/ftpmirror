@@ -482,7 +482,7 @@ sub mirr_upload($$;$$) {
 		} else {
 		    $rfhash->{$f->{f}}->{sz} = $ftp->size($f->{f});
 		    if (not defined $rfhash->{$f->{f}}->{sz}) {
-			ftpd $ftp, "ftp size of '$f->{path}'"
+			ftpd $ftp, "ftp size of '$f->{path}'";
 		    };
 		};
 	    };
