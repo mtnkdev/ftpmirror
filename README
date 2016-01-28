@@ -26,6 +26,6 @@ downloaded files.
 
 For uploaded files and directories, only
 permissions are preserved, because there's no
-support for this in FTP protocol.
+support for modifying timestamps in FTP protocol.
 
 NOTE: uploading is not yet implemented.
