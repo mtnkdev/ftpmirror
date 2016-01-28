@@ -166,7 +166,7 @@ sub descf($) {
 # file permissions.
 sub dir($$;$$$) {
     my ($ftp, $opts, $d, $p, $pfx) = @_;
-    my @files;
+    my ($files, $name2f);
     $d = "." if not defined $d;
     $p = $d if not defined $p;
     $pfx = "" if not defined $pfx;
@@ -234,13 +234,13 @@ sub dir($$;$$$) {
 	    $f->{$_} = $+{$_} foreach keys %+;
 	    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
 	    set_perms($f);
-	    push @files, $f;
+	    push @$files, $f;
+	    $name2f->{$f->{f}} = $f;
 	    # print STDOUT "$f->{t}$f->{urwx}$f->{grwx}$f->{orwx}".
 	    #	"$f->{a} ".sprintf("%04o", $f->{perms})
 	    #	." $f->{usr} $f->{grp} $f->{mjns}"
 	    #	." $f->{md} $f->{hmy} $f->{f}\n";
 	};
-	return @files;
     } else {
 	my @lines = $ftp->ls($d);
 	if (not $ftp->ok()) {ftpd $ftp, "ls '$p'"};
@@ -249,10 +249,11 @@ sub dir($$;$$$) {
 	    $f->{ln} = $ln;
 	    $f->{f} = $ln;
 	    $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
-	    push @files, $f;
+	    push @$files, $f;
+	    $name2f->{$f->{f}} = $f;
 	}
-	return @files;
-    }
+    };
+    return ($files, $name2f);
 };
 
 # If file description was produced by LIST, check file type
@@ -313,12 +314,12 @@ sub get($$$$) {
 sub mirr($$;$$);	# declare prototype for recursion.
 sub mirr($$;$$) {
     my ($ftp, $opts, $path, $pfx) = @_;
-    my (@files, $r);
+    my ($files, $name2f, $r);
     $path = "." if not defined $path;
     $pfx = "" if not defined $pfx;
     # List remote directory:
-    @files = dir($ftp, $opts, ".", $path, $pfx);
-    foreach my $f (@files) {
+    ($files, $name2f) = dir($ftp, $opts, ".", $path, $pfx);
+    foreach my $f (@$files) {
 	next if $f->{f} eq "." or $f->{f} eq "..";
 	check_file_type_and_mtime($f, $ftp);
 	if ($f->{type} eq "f" or $f->{type} eq "f?") {
