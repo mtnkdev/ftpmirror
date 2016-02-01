@@ -40,6 +40,8 @@ sub ftpw($$) {
 sub ftpd($$) {
     my ($ftp, $text) = @_;
     (my $m = $ftp->message()) =~ s/\r*\n$//;
+    $m = ($ftp->ok() ? "OK/" : "ERR/").$ftp->code()." ".$m;
+    $m .= ", $!" if defined $! and $! ne "";
     $m .= ", $@" if defined $@ and $@ ne "";
     die "$text - $m\n";
 };
@@ -523,7 +525,8 @@ sub mirr_upload($$;$$) {
 	    or $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
 		put($f, $ftp, $pfx, $opts);
 	    } else {
-		print STDOUT "${pfx}skip  ".descf($f)."\n";
+		print STDOUT "${pfx}skip  ".descf($f)."\n"
+		    if $opts->{v};
 	    };
 	} elsif ($f->{type} eq "d") {
 	    if (exists $rfhash->{$f->{f}}) {
