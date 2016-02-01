@@ -32,6 +32,8 @@ sub usage() {
 sub ftpw($$) {
     my ($ftp, $text) = @_;
     (my $m = $ftp->message()) =~ s/\r*\n$//;
+    $m = ($ftp->ok() ? "OK/" : "ERR/").$ftp->code()." ".$m;
+    $m .= ", $!" if defined $! and $! ne "";
     $m .= ", $@" if defined $@ and $@ ne "";
     print STDERR "WARN: $text - $m\n";
 };
