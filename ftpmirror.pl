@@ -520,7 +520,7 @@ sub mirr_upload($$;$$) {
 	    };
 	    if (not exists $rfhash->{$f->{f}}
 	    or $rfhash->{$f->{f}}->{sz} != $f->{sz}
-	    or $rfhash->{$f->{f}}->{tm} != $f->{tm}) {
+	    or $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
 		put($f, $ftp, $pfx, $opts);
 	    } else {
 		print STDOUT "${pfx}skip  ".descf($f)."\n";
