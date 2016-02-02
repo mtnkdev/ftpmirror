@@ -465,12 +465,44 @@ sub put($$$$) {
     STDOUT->flush();
 
     $ftp->hash(\*STDOUT, 0x80000);	# print '#' every 512kbytes
-    $ftp->put($f->{f}) or ftpd $ftp, "ftp put '$f->{path}'";
+    my $r = $ftp->put($f->{f});
+    if (not $r or not $ftp->ok()) {
+	if ($ftp->code() == 550
+	and $ftp->message =~ /permission denied/i) {
+	    ftpw $ftp, "failed";
+	    # workaround for updating read-only files:
+	    if (not $opts->{n}) {
+		# chmod u+x and re-upload:
+		my $f1;
+		%$f1 = %$f;	# copy $f
+		$f1->{perms} |= S_IWUSR;
+		set_permsXXXX($f1);
+		$ftp->site("chmod", $f1->{permsXXXX}, $f1->{f})
+			and $ftp->ok()
+		    or ftpd $ftp, "ftp chmod $f1->{permsXXXX}"
+			." '$f1->{path}'";
+		print STDOUT "${pfx}chmod ".descf($f1)."\n";
+		print STDOUT "${pfx}put   ".descf($f).": ";
+		$ftp->put($f->{f}) and $ftp->ok()
+		    or ftpd $ftp, "ftp put '$f->{path}'";
+	    } else {
+		# remove and re-upload:
+		$ftp->delete($f->{f}) and $ftp->ok()
+		    or ftpd $ftp, "ftp rm '$f->{path}'";
+		print STDOUT "${pfx}rm    ".descf($f)."\n";
+		print STDOUT "${pfx}put   ".descf($f).": ";
+		$ftp->put($f->{f}) and $ftp->ok()
+		    or ftpd $ftp, "ftp put '$f->{path}'";
+	    };
+	} else {
+	    ftpd $ftp, "ftp put '$f->{path}'";
+	};
+    };
 
     if (not $opts->{n}) {
 	# set permissions:
 	$ftp->site("chmod", $f->{permsXXXX}, $f->{f}) and $ftp->ok()
-	    or ftpd $ftp, "ftp chmod $f->{permsXXXX} $f->{path}";
+	    or ftpd $ftp, "ftp chmod $f->{permsXXXX} '$f->{path}'";
     };
 
 #   print STDOUT "OK\n";		# upload finished.
@@ -509,7 +541,7 @@ sub mirr_upload($$;$$) {
 		    delete $rfhash->{$f->{f}};
 		} elsif ($rfhash->{$f->{f}}->{type} ne "f"
 		and $rfhash->{$f->{f}}->{type} ne "f?") {
-		    # remove if it's not a file:
+		    # remove if it's not a regular file:
 		    $ftp->delete($f->{f}) and $ftp->ok()
 			or ftpd $ftp, "ftp rm '$f->{path}'";
 		    print STDOUT "${pfx}rm    "
