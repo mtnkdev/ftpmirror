@@ -35,7 +35,7 @@ sub ftpw($$) {
     $m = ($ftp->ok() ? "OK/" : "ERR/").$ftp->code()." ".$m;
     $m .= ", $!" if defined $! and $! ne "";
     $m .= ", $@" if defined $@ and $@ ne "";
-    print STDERR "WARN: $text - $m\n";
+    print STDERR "$text - $m\n";
 };
 
 # Print FTP error message and die.
@@ -465,7 +465,11 @@ sub put($$$$) {
     STDOUT->flush();
 
     $ftp->hash(\*STDOUT, 0x80000);	# print '#' every 512kbytes
+    my (@warnings, $oldswh);
+    $oldswh = $SIG{__WARN__};
+    local $SIG{__WARN__} = sub {push @warnings, $_[0]};
     my $r = $ftp->put($f->{f});
+    $SIG{__WARN__} = $oldswh;
     if (not $r or not $ftp->ok()) {
 	if ($ftp->code() == 550
 	and $ftp->message =~ /permission denied/i) {
