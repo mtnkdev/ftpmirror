@@ -20,13 +20,14 @@ sub usage() {
     die  "USAGE: $0 [opts] [(ftp|ftps)://]usr\@host/sub/dir\n"
 	."   or: $0 -c [(ftp|ftps)://]host\n"
 	." opts:\n"
-	."\t-c     print FTP server's certificate and exit\n"
-	."\t-d     FTP debug output\n"
-	."\t-f FP  verify FTP server against fingerprint FP\n"
-	."\t-n     don't preserve permissions\n"
-	."\t-o     overwrite newer files\n"
-	."\t-u     upload to FTP server insead of downloading\n"
-	."\t-v     verbose mode\n";
+	."\t-c       print FTP server's certificate and exit\n"
+	."\t-d       FTP debug output\n"
+	."\t-f F     verify FTP server against fingerprint F\n"
+	."\t-i LIST  ignore files named in the comma-separated LIST\n"
+	."\t-n       don't preserve permissions\n"
+	."\t-o       overwrite newer files\n"
+	."\t-u       upload to FTP server insead of downloading\n"
+	."\t-v       verbose mode\n";
 };
 
 # Print FTP warning message.
@@ -354,8 +355,13 @@ sub mirr($$;$$) {
     # List remote directory:
     ($files, $fhash) = dir($ftp, $opts, ".", $path, $pfx);
     foreach my $f (@$files) {
-	next if $f->{f} eq "." or $f->{f} eq "..";
+	next if $f->{f} eq "." or $f->{f} eq "..";	# skip
 	check_file_type_and_mtime($f, $ftp);
+	if ($opts->{ignore}->{$f->{f}}) {
+	    print STDOUT "${pfx}ignore ".descf($f)."\n"
+		if $opts->{v};
+	    next;
+	};
 	if ($f->{type} eq "f" or $f->{type} eq "f?") {
 	    my $lf;
 	    if (-e $f->{f}) {
@@ -371,7 +377,7 @@ sub mirr($$;$$) {
 			    or die "rmdir '$lf->{path}' - $!";
 			undef $lf;
 		    } else {
-			print STDOUT "${pfx}skip  "
+			print STDOUT "${pfx}skip   "
 			    .descf($lf->{f})."\n";
 			next;
 		    };
@@ -383,7 +389,7 @@ sub mirr($$;$$) {
 			unlink $lf->{f}
 			    or die "rm '$lf->{path}' - $!";
 		    } else {
-			print STDOUT "${pfx}skip  "
+			print STDOUT "${pfx}skip   "
 			    .descf($lf->{f})."\n";
 			next;
 		    };
@@ -410,9 +416,9 @@ sub mirr($$;$$) {
 	    and ($opts->{o} or $lf->{tm} < $f->{tm})) {
 		chmod $f->{perms}, $f->{f}
 		    or die "chmod $f->{permsXXXX} '$f->{path}' - $!";
-		print STDOUT "${pfx}chmod ".descf($f)."\n";
+		print STDOUT "${pfx}chmod  ".descf($f)."\n";
 	    } else {
-		print STDOUT "${pfx}skip  ".descf($f)."\n"
+		print STDOUT "${pfx}skip   ".descf($f)."\n"
 		    if $opts->{v};
 	    };
 	} elsif ($f->{type} eq "d" or $f->{type} eq "d?") {
@@ -431,9 +437,9 @@ sub mirr($$;$$) {
 		and $lf->{tm} < $f->{tm}) {
 		    unlink $lf->{f}
 			or die "rm '$lf->{f}' - $!";
-		    print STDOUT "${pfx}rm    ".descf($lf)."\n";
+		    print STDOUT "${pfx}rm     ".descf($lf)."\n";
 		} else {
-		    print STDOUT "${pfx}skip  "
+		    print STDOUT "${pfx}skip   "
 			.descf($lf->{f})."\n";
 		    goto MIRR_CDUP;
 		};
@@ -455,13 +461,13 @@ sub mirr($$;$$) {
 	    if (not defined $opts->{n} and ($newdir
 	    or $lf->{perms} != $f->{perms} and ($opts->{o}
 	    or defined $f->{tm} and $lf->{tm} < $f->{tm}))) {
-		print STDOUT "${pfx}chmod ".descf($f)."\n";
+		print STDOUT "${pfx}chmod  ".descf($f)."\n";
 		chmod $f->{perms}, $f->{f}
 		    or die "chmod $f->{permsXXXX} $f->{f} - $!";
 	    };
 	    chdir $f->{f}
 		or die "cd '$f->{f}' - $!";
-	    print STDOUT "${pfx}cd    ".descf($f)."\n"
+	    print STDOUT "${pfx}cd     ".descf($f)."\n"
 		if $opts->{v};
 	    my $path2 = ($path eq ".") ? $f->{f} : "$path/$f->{f}";
 	    mirr($ftp, $opts, $path2, " ".$pfx);
@@ -472,7 +478,7 @@ MIRR_CDUP:
 	    $ftp->cdup() and $ftp->ok() or ftpd $ftp, "ftp cdup";
 	} else {
 	    # Skip file of unknown type:
-	    print STDOUT "${pfx}skip ".descf($f)."\n";
+	    print STDOUT "${pfx}skip   ".descf($f)."\n";
 	};
     };
 };
@@ -513,7 +519,7 @@ sub stat_file($$) {
 sub put($$$$) {
     my ($f, $ftp, $pfx, $opts) = @_;
 
-    print STDOUT "${pfx}put   ".descf($f).": ";	# upload started,
+    print STDOUT "${pfx}put    ".descf($f).": ";  # upload started,
     STDOUT->flush();
 
     $ftp->hash(\*STDOUT, 0x80000);	# print '#' every 512kbytes
@@ -537,16 +543,16 @@ sub put($$$$) {
 			and $ftp->ok()
 		    or ftpd $ftp, "ftp chmod $f1->{permsXXXX}"
 			." '$f1->{path}'";
-		print STDOUT "${pfx}chmod ".descf($f1)."\n";
-		print STDOUT "${pfx}put   ".descf($f).": ";
+		print STDOUT "${pfx}chmod  ".descf($f1)."\n";
+		print STDOUT "${pfx}put    ".descf($f).": ";
 		$ftp->put($f->{f}) and $ftp->ok()
 		    or ftpd $ftp, "ftp put '$f->{path}'";
 	    } else {
 		# remove and re-upload:
 		$ftp->delete($f->{f}) and $ftp->ok()
 		    or ftpd $ftp, "ftp rm '$f->{path}'";
-		print STDOUT "${pfx}rm    ".descf($f)."\n";
-		print STDOUT "${pfx}put   ".descf($f).": ";
+		print STDOUT "${pfx}rm     ".descf($f)."\n";
+		print STDOUT "${pfx}put    ".descf($f).": ";
 		$ftp->put($f->{f}) and $ftp->ok()
 		    or ftpd $ftp, "ftp put '$f->{path}'";
 	    };
@@ -585,6 +591,11 @@ sub mirr_upload($$;$$) {
 	next if $f->{f} eq "." or $f->{f} eq "..";	# skip
 	stat_file($f, $path)
 	    or die "stat '$f->{path}' - $!";
+	if ($opts->{ignore}->{$f->{f}}) {
+	    print STDOUT "${pfx}ignore ".descf($f)."\n"
+		if $opts->{v};
+	    next;
+	};
 	if ($f->{type} eq "f") {
 	    if (exists $rfhash->{$f->{f}}) {
 		check_file_type_and_mtime($rfhash->{$f->{f}}, $ftp);
@@ -597,11 +608,11 @@ sub mirr_upload($$;$$) {
 		    and $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
 			$ftp->rmdir($f->{f}, 1) and $ftp->ok()
 			    or ftpd $ftp, "ftp rmdir '$f->{path}'";
-			print STDOUT "${pfx}rmdir "
+			print STDOUT "${pfx}rmdir  "
 			    .descf($rfhash->{$f->{f}})."\n";
 			delete $rfhash->{$f->{f}};
 		    } else {
-			print STDOUT "${pfx}skip  "
+			print STDOUT "${pfx}skip   "
 			    .descf($rfhash->{$f->{f}})."\n";
 			next;
 		    };
@@ -614,11 +625,11 @@ sub mirr_upload($$;$$) {
 		    and $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
 			$ftp->delete($f->{f}) and $ftp->ok()
 			    or ftpd $ftp, "ftp rm '$f->{path}'";
-			print STDOUT "${pfx}rm    "
+			print STDOUT "${pfx}rm     "
 			    .descf($rfhash->{$f->{f}})."\n";
 			delete $rfhash->{$f->{f}};
 		    } else {
-			print STDOUT "${pfx}skip  "
+			print STDOUT "${pfx}skip   "
 			    .descf($rfhash->{$f->{f}})."\n";
 			next;
 		    };
@@ -649,7 +660,7 @@ sub mirr_upload($$;$$) {
 		    or ftpd $ftp, "ftp chmod $f->{permsXXXX}"
 			." '$f->{path}'";
 	    } else {
-		print STDOUT "${pfx}skip  ".descf($f)."\n"
+		print STDOUT "${pfx}skip   ".descf($f)."\n"
 		    if $opts->{v};
 	    };
 	} elsif ($f->{type} eq "d") {
@@ -664,11 +675,11 @@ sub mirr_upload($$;$$) {
 		    and $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
 			$ftp->delete($f->{f}) and $ftp->ok()
 			    or ftpd $ftp, "ftp rm '$f->{path}'";
-			print STDOUT "${pfx}rm    "
+			print STDOUT "${pfx}rm     "
 			    .descf($rfhash->{$f->{f}})."\n";
 			delete $rfhash->{$f->{f}};
 		    } else {
-			print STDOUT "${pfx}skip  "
+			print STDOUT "${pfx}skip   "
 			    .descf($rfhash->{$f->{f}})."\n";
 			next;
 		    };
@@ -689,19 +700,19 @@ sub mirr_upload($$;$$) {
 			." '$f->{path}'";
 		# don't report chmod on newly created directories:
 		if (exists $rfhash->{$f->{f}}) {
-		    print STDOUT "${pfx}chmod ".descf($f)."\n";
+		    print STDOUT "${pfx}chmod  ".descf($f)."\n";
 		};
 	    };
 	    if (not exists $rfhash->{$f->{f}}) {
 		# XXX: delayed mkdir report:
-		print STDOUT "${pfx}mkdir ".descf($f)."\n";
+		print STDOUT "${pfx}mkdir  ".descf($f)."\n";
 	    };
 	    # change into directory $f:
 	    $ftp->cwd($f->{f}) and $ftp->ok()
 		or ftpd $ftp, "ftp cd '$f->{path}'";
 	    chdir $f->{f}
 		or die "cd '$f->{path}' - $!";
-	    print STDOUT "${pfx}cd    ".descf($f)."\n"
+	    print STDOUT "${pfx}cd     ".descf($f)."\n"
 		if $opts->{v};
 	    my $path2 = ($path eq ".") ? $f->{f} : "$path/$f->{f}";
 	    mirr_upload($ftp, $opts, $path2, " ".$pfx);
@@ -711,12 +722,12 @@ sub mirr_upload($$;$$) {
 	    $ftp->cdup() and $ftp->ok() or ftpd $ftp, "ftp cdup";
 	} else {
 	    # skip device files, sockets, FIFOs and symlinks:
-	    print STDOUT "${pfx}skip  ".descf($f)."\n";
+	    print STDOUT "${pfx}skip   ".descf($f)."\n";
 	};
     };
 };
 
-usage if not getopts "cdf:nouv", \%opts;
+usage if not getopts "cdf:i:nouv", \%opts;
 usage if scalar(@ARGV) < 1;
 $ARGV[0] =~ m{^(?:(ftp[s0]?)://)?(?:([^@]+)@)?([^/]+)(?:/+(.*))?$}i
     or die "ERROR: invalid FTP URL - $ARGV[0]\n";
@@ -727,6 +738,11 @@ my $ftphost = $3;
 my $remotedir = defined $4 && $4 ne "" ? $4 : ".";
 my $localdir = defined $ARGV[1] && $ARGV[1] ne "" ? $ARGV[1] :
     $remotedir ne "." ? "$ftphost/$remotedir" : $ftphost;
+if (defined($opts{i})) {
+    $opts{ignore}->{$_} = 1 foreach split /,/, $opts{i};
+};
+$opts{ignore}->{"."} = 1;
+$opts{ignore}->{".."} = 1;
 
 my $ftp = Net::FTP->new($ftphost, Timeout=>15, Passive=>1,
 	Debug=>$opts{d},
