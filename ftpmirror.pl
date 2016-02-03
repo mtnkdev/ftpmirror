@@ -24,6 +24,7 @@ sub usage() {
 	."\t-d     FTP debug output\n"
 	."\t-f FP  verify FTP server against fingerprint FP\n"
 	."\t-n     don't preserve permissions\n"
+	."\t-o     overwrite newer files\n"
 	."\t-u     upload to FTP server insead of downloading\n"
 	."\t-v     verbose mode\n";
 };
@@ -356,28 +357,57 @@ sub mirr($$;$$) {
 	next if $f->{f} eq "." or $f->{f} eq "..";
 	check_file_type_and_mtime($f, $ftp);
 	if ($f->{type} eq "f" or $f->{type} eq "f?") {
-	    my @st;
+	    my $lf;
 	    if (-e $f->{f}) {
-		if (-d $f->{f}) {
-		    # rmdir if it's a directory:
-		    rmdir_r $f->{f}
-			or die "rmdir '$f->{path}' - $!";
+		$lf = {f=>$f->{f}};
+		stat_file($lf, $path)
+		    or die "stat '$lf->{path}' - $!";
+		if (-d $lf->{f}) {
+		    # rmdir if it's an older directory
+		    # or "overwrite newer files" flag is set:
+		    if ($opts->{o}
+		    or defined $f->{tm} and $lf->{tm} < $f->{tm}) {
+			rmdir_r $lf->{f}
+			    or die "rmdir '$lf->{path}' - $!";
+			undef $lf;
+		    } else {
+			print STDOUT "${pfx}skip  "
+			    .descf($lf->{f})."\n";
+			next;
+		    };
 		} elsif (not -f $f->{f}) {
-		    # remove if it's not a file:
-		    unlink $f->{f}
-			or die "rm '$f->{path}' - $!";
+		    # remove if it's an older special file
+		    # or "overwrite newer files" flag is set:
+		    if ($opts->{o}
+		    or defined $f->{tm} and $lf->{tm} < $f->{tm}) {
+			unlink $lf->{f}
+			    or die "rm '$lf->{path}' - $!";
+		    } else {
+			print STDOUT "${pfx}skip  "
+			    .descf($lf->{f})."\n";
+			next;
+		    };
 		} else {
-		    (@st = stat $f->{f})
-			or die "stat '$f->{path}' - $!";
 		    defined($f->{sz} = $ftp->size($f->{f}))
 		    and $ftp->ok()
 			or ftpd $ftp, "ftp size of '$f->{path}'";
 		};
 	    };
-	    if (not @st or $f->{sz} != $st[7] or $f->{tm} != $st[9]) {
+	    # Download file if it doesn't exist locally or local
+	    # version is older and has a different size or any of
+	    # size/mtime differ and "overwrite newer files" is set:
+	    if (not defined $lf
+	    or $lf->{tm} < $f->{tm}
+	    and ($f->{sz} != $lf->{sz} or $opts->{o})
+	    or $lf->{tm} == $f->{tm}
+	    and ($f->{sz} != $lf->{sz} or $opts->{o})
+	    or $lf->{tm} > $f->{tm} and $opts->{o}) {
 		get($f, $ftp, $pfx, $opts);
-	    } elsif (not $opts->{n}
-	    and $f->{perms} != ($st[2] & 07777)) {
+	    # If "don't preserve permissions" isn't set, chmod the
+	    # local file if it's older or "overwrite newer files"
+	    # flag is set:
+	    } elsif (not $opts->{n} and $f->{perms} != $lf->{perms}
+	    and ($opts->{o} or $lf->{tm} < $f->{tm})) {
 		chmod $f->{perms}, $f->{f}
 		    or die "chmod $f->{permsXXXX} '$f->{path}' - $!";
 		print STDOUT "${pfx}chmod ".descf($f)."\n";
@@ -391,21 +421,40 @@ sub mirr($$;$$) {
 	    # chdir to it and call mirr() recursively:
 	    $ftp->cwd($f->{f}) and $ftp->ok()
 		or ftpd $ftp, "ftp cd '$f->{f}'";
+	    my $lf = {f=>$f->{f}};
 	    if (-e $f->{f} and not -d $f->{f}) {
-		my $lf = {f=>$f->{f}};
-		stat_file($lf, $path);
-		unlink $f->{f}
-		    or die "rm '$f->{f}' - $!";
-		print STDOUT "${pfx}rm    ".descf($lf)."\n";
-	    }
-	    mkdir_p $f->{f}
-		or die "mkdir '$f->{f}' - $!"
-		    if not -d $f->{f};
-	    # set permissions on a directory:
-	    my @st = stat $f->{f};
-	    die "stat '$f->{f}' - $!" if not scalar(@st);
-	    if (defined $f->{perms}
-	    and $f->{perms} != ($st[2] & 07777)) {
+		stat_file($lf, $path)
+		    or die "stat '$lf->{path}' - $!";
+		# remove this non-directory it it's older
+		# or "overwrite newer files" flag is set:
+		if ($opts->{o} or defined $f->{tm}
+		and $lf->{tm} < $f->{tm}) {
+		    unlink $lf->{f}
+			or die "rm '$lf->{f}' - $!";
+		    print STDOUT "${pfx}rm    ".descf($lf)."\n";
+		} else {
+		    print STDOUT "${pfx}skip  "
+			.descf($lf->{f})."\n";
+		    goto MIRR_CDUP;
+		};
+	    };
+	    my $newdir = 0;
+	    if (not -d $f->{f}) {
+		mkdir_p $f->{f}
+		    or die "mkdir '$f->{f}' - $!";
+		$newdir = 1;
+	    };
+	    stat_file($lf, $path)
+		or die "stat '$lf->{path}' - $!";
+	    # Fix permissions for a directory if "don't preserve
+	    # permissions" isn't set:
+	    # * on newly created directories
+	    # * on older local directories
+	    # * on newer local directories when "overwrite newer
+	    #   files" flag is set:
+	    if (not defined $opts->{n} and ($newdir
+	    or $lf->{perms} != $f->{perms} and ($opts->{o}
+	    or defined $f->{tm} and $lf->{tm} < $f->{tm}))) {
 		print STDOUT "${pfx}chmod ".descf($f)."\n";
 		chmod $f->{perms}, $f->{f}
 		    or die "chmod $f->{permsXXXX} $f->{f} - $!";
@@ -418,6 +467,7 @@ sub mirr($$;$$) {
 	    mirr($ftp, $opts, $path2, " ".$pfx);
 	    # Return to local parent from local directory '$f':
 	    chdir ".." or die "cd '..' - $!";
+MIRR_CDUP:
 	    # Return to remote parent from remote directory '$f':
 	    $ftp->cdup() and $ftp->ok() or ftpd $ftp, "ftp cdup";
 	} else {
@@ -432,6 +482,7 @@ sub stat_file($$) {
     my ($f, $p) = @_;
     $f->{path} = $p eq "." ? $f->{f} : "$p/$f->{f}";
     my @st = lstat $f->{f};
+    return 0 if not @st;
     $f->{perms} = $st[2] & 07777;
     set_permsXXXX($f);
     if (S_ISDIR($st[2])) {
@@ -455,6 +506,7 @@ sub stat_file($$) {
     $f->{grp} = $st[5];
     $f->{sz}  = $st[7];
     $f->{tm}  = $st[9];
+    return 1;
 };
 
 # Put file $f to FTP server $ftp. Set permissions afterwards.
@@ -531,26 +583,45 @@ sub mirr_upload($$;$$) {
     foreach my $fn (@files) {
 	my $f; $f->{f} = $fn;
 	next if $f->{f} eq "." or $f->{f} eq "..";	# skip
-	stat_file($f, $path);
+	stat_file($f, $path)
+	    or die "stat '$f->{path}' - $!";
 	if ($f->{type} eq "f") {
 	    if (exists $rfhash->{$f->{f}}) {
 		check_file_type_and_mtime($rfhash->{$f->{f}}, $ftp);
 		if ($rfhash->{$f->{f}}->{type} eq "d"
-		or $rfhash->{$f->{f}}->{type} eq "f?") {
-		    # rmdir if it's a directory:
-		    $ftp->rmdir($f->{f}, 1) and $ftp->ok()
-			or ftpd $ftp, "ftp rmdir '$f->{path}'";
-		    print STDOUT "${pfx}rmdir "
-			.descf($rfhash->{$f->{f}})."\n";
-		    delete $rfhash->{$f->{f}};
+		or $rfhash->{$f->{f}}->{type} eq "d?") {
+		    # rmdir if it's an older directory
+		    # or "overwrite newer files" flag is set:
+		    if ($opts->{o}
+		    or defined $rfhash->{$f->{f}}->{tm}
+		    and $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
+			$ftp->rmdir($f->{f}, 1) and $ftp->ok()
+			    or ftpd $ftp, "ftp rmdir '$f->{path}'";
+			print STDOUT "${pfx}rmdir "
+			    .descf($rfhash->{$f->{f}})."\n";
+			delete $rfhash->{$f->{f}};
+		    } else {
+			print STDOUT "${pfx}skip  "
+			    .descf($rfhash->{$f->{f}})."\n";
+			next;
+		    };
 		} elsif ($rfhash->{$f->{f}}->{type} ne "f"
 		and $rfhash->{$f->{f}}->{type} ne "f?") {
-		    # remove if it's not a regular file:
-		    $ftp->delete($f->{f}) and $ftp->ok()
-			or ftpd $ftp, "ftp rm '$f->{path}'";
-		    print STDOUT "${pfx}rm    "
-			.descf($rfhash->{$f->{f}})."\n";
-		    delete $rfhash->{$f->{f}};
+		    # remove if it's an older special file
+		    # or "overwrite newer files" flag is set:
+		    if ($opts->{o}
+		    or defined $rfhash->{$f->{f}}->{tm}
+		    and $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
+			$ftp->delete($f->{f}) and $ftp->ok()
+			    or ftpd $ftp, "ftp rm '$f->{path}'";
+			print STDOUT "${pfx}rm    "
+			    .descf($rfhash->{$f->{f}})."\n";
+			delete $rfhash->{$f->{f}};
+		    } else {
+			print STDOUT "${pfx}skip  "
+			    .descf($rfhash->{$f->{f}})."\n";
+			next;
+		    };
 		} else {
 		    $rfhash->{$f->{f}}->{sz} = $ftp->size($f->{f});
 		    if (not defined $rfhash->{$f->{f}}->{sz}) {
@@ -558,10 +629,25 @@ sub mirr_upload($$;$$) {
 		    };
 		};
 	    };
+	    # Upload the file if it doesn't exist on the FTP server
+	    # or if its remote version has different size or mtime and
+	    # the local one is newer or "overwrite newer files" flag
+	    # is set:
 	    if (not exists $rfhash->{$f->{f}}
+	    or $rfhash->{$f->{f}}->{tm} < $f->{tm}
 	    or $rfhash->{$f->{f}}->{sz} != $f->{sz}
-	    or $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
+	    and $opts->{o}) {
 		put($f, $ftp, $pfx, $opts);
+	    # If "don't preserve permissions" flag isn't set,
+	    # chmod remote files when they are older or
+	    # "overwrite newer files" flag is set:
+	    } elsif (not $opts->{n}
+	    and $rfhash->{$f->{f}}->{perms} != $f->{perms}
+	    and ($opts->{o} or $rfhash->{$f->{f}}->{tm} < $f->{tm})) {
+		$ftp->site("chmod", $f->{permsXXXX}, $f->{f})
+		and $ftp->ok()
+		    or ftpd $ftp, "ftp chmod $f->{permsXXXX}"
+			." '$f->{path}'";
 	    } else {
 		print STDOUT "${pfx}skip  ".descf($f)."\n"
 		    if $opts->{v};
@@ -571,12 +657,21 @@ sub mirr_upload($$;$$) {
 		check_file_type_and_mtime($rfhash->{$f->{f}}, $ftp);
 		if ($rfhash->{$f->{f}}->{type} ne "d"
 		and $rfhash->{$f->{f}}->{type} ne "d?") {
-		    # remove if it's not a directory:
-		    $ftp->delete($f->{f}) and $ftp->ok()
-			or ftpd $ftp, "ftp rm '$f->{path}'";
-		    print STDOUT "${pfx}rm    "
-			.descf($rfhash->{$f->{f}})."\n";
-		    delete $rfhash->{$f->{f}};
+		    # remove if it's an older file
+		    # or "overwrite newer files" flag is set:
+		    if ($opts->{o}
+		    or defined $rfhash->{$f->{f}}->{tm}
+		    and $rfhash->{$f->{f}}->{tm} < $f->{tm}) {
+			$ftp->delete($f->{f}) and $ftp->ok()
+			    or ftpd $ftp, "ftp rm '$f->{path}'";
+			print STDOUT "${pfx}rm    "
+			    .descf($rfhash->{$f->{f}})."\n";
+			delete $rfhash->{$f->{f}};
+		    } else {
+			print STDOUT "${pfx}skip  "
+			    .descf($rfhash->{$f->{f}})."\n";
+			next;
+		    };
 		};
 	    };
 	    # create if it doesn't exist:
@@ -592,7 +687,7 @@ sub mirr_upload($$;$$) {
 		and $ftp->ok()
 		    or ftpd $ftp, "ftp chmod $f->{permsXXXX}"
 			." '$f->{path}'";
-		# report chmod on existing directories only:
+		# don't report chmod on newly created directories:
 		if (exists $rfhash->{$f->{f}}) {
 		    print STDOUT "${pfx}chmod ".descf($f)."\n";
 		};
@@ -621,7 +716,7 @@ sub mirr_upload($$;$$) {
     };
 };
 
-usage if not getopts "cdf:nuv", \%opts;
+usage if not getopts "cdf:nouv", \%opts;
 usage if scalar(@ARGV) < 1;
 $ARGV[0] =~ m{^(?:(ftp[s0]?)://)?(?:([^@]+)@)?([^/]+)(?:/+(.*))?$}i
     or die "ERROR: invalid FTP URL - $ARGV[0]\n";
