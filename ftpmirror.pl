@@ -738,6 +738,9 @@ my $ftphost = $3;
 my $remotedir = defined $4 && $4 ne "" ? $4 : ".";
 my $localdir = defined $ARGV[1] && $ARGV[1] ne "" ? $ARGV[1] :
     $remotedir ne "." ? "$ftphost/$remotedir" : $ftphost;
+# strip trailing slashes:
+$localdir  =~ s|^(..*?)/+$|$1|;
+$remotedir =~ s|/+$||;
 if (defined($opts{i})) {
     $opts{ignore}->{$_} = 1 foreach split /,/, $opts{i};
 };
